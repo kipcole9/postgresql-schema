@@ -1,8 +1,6 @@
 require "postgresql/schema/version"
-
-dir = File.dirname(__FILE__)
-require "#{dir}/schema/schema_statements.rb"
-require "#{dir}/schema/schema_dumper.rb"
+require 'active_record'
+require 'postgresql/schema/railtie'
 
 module Postgresql
   module Schema
