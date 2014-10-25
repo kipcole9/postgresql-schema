@@ -8,8 +8,8 @@ Gem::Specification.new do |spec|
   spec.version       = Postgresql::Schema::VERSION
   spec.authors       = ["Kip Cole"]
   spec.email         = ["kipcole9@gmail.com"]
-  spec.summary       = %q{TODO: Write a short summary. Required.}
-  spec.description   = %q{TODO: Write a longer description. Optional.}
+  spec.summary       = %q{Add postgres specific schema support and dumper support.}
+  spec.description   = %q{Support for domains, composite types, enums in Postgresql.}
   spec.homepage      = ""
   spec.license       = "MIT"
 
