@@ -127,7 +127,7 @@ module ActiveRecord
 
         # Drops the schema for the given schema name.
         def drop_schema schema_name
-          exec_query("DROP SCHEMA #{schema_name} CASCADE") if schema_exists?(schema_name)
+          exec_query("DROP SCHEMA #{schema_name}") if schema_exists?(schema_name)
         end
       
         def create_enum(name, values, options = {})
@@ -168,7 +168,7 @@ module ActiveRecord
         end
         
         def drop_domain(name)
-          execute "DROP DOMAIN IF EXISTS #{name} CASCADE"
+          execute "DROP DOMAIN IF EXISTS #{name}"
         end
       
         def enum_types
@@ -251,7 +251,7 @@ module ActiveRecord
         # CASCADE added since we may have inherited tables and when :force => true
         # then they have to go as well.
         def drop_table(table_name, options = {})
-          execute "DROP TABLE #{quote_table_name(table_name)} CASCADE"
+          execute "DROP TABLE #{quote_table_name(table_name)}"
         end
       
         # Sets the schema search path to a string of comma-separated schema names.
