@@ -11,7 +11,6 @@ module ActiveRecord
   class SchemaDumper #:nodoc:
     private_class_method :new
 
-    ##
     # :singleton-method:
     # A list of tables which should not be dumped to the schema.
     # Acceptable values are strings as well as regexp.
@@ -19,14 +18,23 @@ module ActiveRecord
     cattr_accessor :ignore_tables
     @@ignore_tables = []
 
-    def self.dump(connection=ActiveRecord::Base.connection, stream=STDOUT)
-      new(connection).dump(stream)
+    def self.dump(connection=ActiveRecord::Base.connection, stream=STDOUT, options = {})
+      begin
+        if options[:schema_search_path]
+          current_search_path = ActiveRecord::Base.connection.schema_search_path
+          ActiveRecord::Base.connection.schema_search_path = options[:schema_search_path]
+        end
+
+        new(connection).dump(stream, options)
+      ensure
+        ActiveRecord::Base.connection.schema_search_path = current_search_path if current_search_path.present?
+      end
       stream
     end
 
-    def dump(stream)
+    def dump(stream, options)
       header(stream)
-      schemas(stream)
+      schemas(stream, options)
       extensions(stream)
       enums(stream)
       domains(stream)
@@ -74,9 +82,10 @@ HEADER
       stream.puts "end"
     end
     
-    def schemas(stream)
-      if (search_paths = @connection.schema_search_paths).any?
-        search_paths = search_paths - ['public']
+    def schemas(stream, options)
+      search_paths = @connection.schema_search_paths - ['public']
+      search_paths -= @connection.schema_search_paths if options[:schema_search_path]
+      if search_paths.any?
         stream.puts "  # Create schemas (except public schema) configured in search_path option in database.yml" 
         search_paths.each do |schema|
           stream.puts "  create_schema #{schema.inspect}"
@@ -88,6 +97,7 @@ HEADER
     def extensions(stream)
       return unless @connection.supports_extensions?
       extensions = @connection.extensions_with_namespace
+      extensions.select! {|e| @connection.schema_search_paths.include?(e.second) }
       if extensions.any?
         stream.puts "  # These are extensions that must be enabled in order to support this database"
         extensions.each do |extension|
@@ -109,6 +119,7 @@ HEADER
       enums = @connection.execute(enum_query, "SCHEMA").group_by{|e| e['enumtype']}.each_with_object({}) do |(k, v), h|
          h[k] = v.map{|g| g['enumlabel']}
       end
+      enums.select! {|e| @connection.schema_search_paths.include?(@connection.schema_for_enum(e)) }
       if enums.any?
         stream.puts "  # Create user defined Enum types"        
         enums.each do |enum, values|
@@ -126,6 +137,7 @@ HEADER
     # Domains
     def domains(stream)
       domains = @connection.domains_with_type_and_namespace
+      domains.select! {|d| @connection.schema_search_paths.include?(d.first) }
       if domains.any?
         stream.puts "  # These are user defined domains for this application"
         domains.each do |domain|
@@ -138,6 +150,7 @@ HEADER
     # User defined composite types
     def composite_types(stream)
       composite_types = @connection.composite_types
+      composite_types.select! {|c| @connection.schema_search_paths.include?(@connection.schema_for_composite_type(c)) }
       if composite_types.any?
         stream.puts "  # These are user defined composite data types for this application"
         composite_types.each do |composite_type|

@@ -132,14 +132,14 @@ module ActiveRecord
       
         def create_enum(name, values, options = {})
           full_name = options[:schema] ? "#{options[:schema]}.#{name}" : name.to_s
-          unless enum_type_exists?(full_name)
+          unless enum_type_exists?(name)
             execute "CREATE TYPE #{full_name} AS ENUM (#{values.map{|v| quote(v.to_s)}.join(', ')})"
           end
         end
       
         def create_domain(name, options = {})
           full_name = options[:schema] ? "#{options[:schema].to_s}.#{name.to_s}" : name.to_s
-          unless domain_type_exists?(full_name)
+          unless domain_type_exists?(name)
             execute "CREATE DOMAIN #{full_name} AS #{options[:as]}"
           end
         end
