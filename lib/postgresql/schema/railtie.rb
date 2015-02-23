@@ -5,6 +5,7 @@ module Postgresql
         ActiveSupport.on_load(:active_record) do
           dir = File.dirname(__FILE__)
           require "#{dir}/schema_statements.rb"
+          require "#{dir}/column_dumper.rb"
           require "#{dir}/schema_dumper.rb"
         end
       end
