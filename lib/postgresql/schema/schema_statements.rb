@@ -1,7 +1,33 @@
 module ActiveRecord
   module ConnectionAdapters # :nodoc:
+    class PostgreSQLAdapter 
+      def enable_extension(name, options = {})
+        schema = options[:schema] || Rails.configuration.database_configuration[Rails.env]['extensions_schema']
+        exec_query("CREATE EXTENSION IF NOT EXISTS \"#{name}\" #{' SCHEMA ' + schema if schema}").tap {
+          reload_type_map
+        }
+      end
+      
+      def clear_cache_for_search_path!(search_path)
+        @statements.clear_for_search_path(search_path)
+      end
+      
+      class StatementPool < ConnectionAdapters::StatementPool
+        def clear_for_search_path(search_path)
+          cache.each_key do |key|
+            path_key = key.split('-').first
+            if path_key.gsub(' ','') == search_path.gsub(' ','')
+              # puts "Deleting statement cache entry #{key}"
+              delete(key)
+            else
+              puts "SHOULD HAVE DELETED #{path_key} given #{search_path}" if path_key =~ /test/
+            end 
+          end
+        end
+      end
+    end
+    
     module SchemaStatements
-
       # Creates a new table with the name +table_name+. +table_name+ may either
       # be a String or a Symbol.
       #
@@ -92,6 +118,7 @@ module ActiveRecord
   end
 end
 
+      
 module ActiveRecord
   module ConnectionAdapters
     module PostgreSQL

@@ -1,5 +1,5 @@
 module Postgresql
-  module Inheritance
+  module Schema
     class Railtie < Rails::Railtie
       initializer "postgres-schema.configure_rails_initialization" do
         ActiveSupport.on_load(:active_record) do
