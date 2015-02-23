@@ -122,30 +122,27 @@ module ActiveRecord
       
         # Creates a schema for the given schema name.
         def create_schema schema_name
-          exec_query("CREATE SCHEMA #{schema_name}") unless schema_exists?(schema_name)
+          exec_query("CREATE SCHEMA #{schema_name}")
         end
 
         # Drops the schema for the given schema name.
-        def drop_schema schema_name
-          exec_query("DROP SCHEMA #{schema_name}") if schema_exists?(schema_name)
+        def drop_schema schema_name, options = {}
+          sql = "DROP SCHEMA #{schema_name}"
+          sql << " CASCADE" if options[:force]
+          exec_query(sql)
         end
       
         def create_enum(name, values, options = {})
           full_name = options[:schema] ? "#{options[:schema]}.#{name}" : name.to_s
-          unless enum_type_exists?(name)
-            execute "CREATE TYPE #{full_name} AS ENUM (#{values.map{|v| quote(v.to_s)}.join(', ')})"
-          end
+          execute "CREATE TYPE #{full_name} AS ENUM (#{values.map{|v| quote(v.to_s)}.join(', ')})"
         end
       
         def create_domain(name, options = {})
           full_name = options[:schema] ? "#{options[:schema].to_s}.#{name.to_s}" : name.to_s
-          unless domain_type_exists?(name)
-            execute "CREATE DOMAIN #{full_name} AS #{options[:as]}"
-          end
+          execute "CREATE DOMAIN #{full_name} AS #{options[:as]}"
         end
       
         def create_composite_type(name, options = {})
-          return if composite_type_exists?(name)
           schema_creation = ActiveRecord::ConnectionAdapters::AbstractAdapter::SchemaCreation.new(ActiveRecord::Base.connection)
           composite_definition = ActiveRecord::Base.connection.send :create_table_definition, :t, nil, {}
           yield composite_definition
@@ -203,7 +200,7 @@ module ActiveRecord
                     AND n.nspname <> '#{extensions_schema}'
                     AND pg_catalog.pg_type_is_visible ( t.oid )
           SQL
-          @composite_types ||= exec_query(composite_query, "SCHEMA").rows.flatten - enum_types - domain_types
+          exec_query(composite_query, "SCHEMA").rows.flatten - enum_types - domain_types
         end
         
         def domain_types
@@ -238,21 +235,11 @@ module ActiveRecord
           res.rows
         end
       
-        def sequences_with_namespace
-          sql = <<-SQL
-            SELECT relname, nspname 
-            FROM pg_class JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace 
-            WHERE relkind = 'S';
-          SQL
-          res = exec_query(sql, "SCHEMA")
-          res.rows
-        end
-      
         # CASCADE added since we may have inherited tables and when :force => true
         # then they have to go as well.
-        def drop_table(table_name, options = {})
-          execute "DROP TABLE #{quote_table_name(table_name)}"
-        end
+        # def drop_table(table_name, options = {})
+        #   execute "DROP TABLE #{quote_table_name(table_name)}"
+        # end
       
         # Sets the schema search path to a string of comma-separated schema names.
         # Names beginning with $ have to be quoted (e.g. $user => '$user').
@@ -262,13 +249,12 @@ module ActiveRecord
         def schema_search_path=(schema_csv)
           if schema_csv
             execute("SET search_path TO #{schema_csv}")
-            @schema_search_path = schema_csv
+            schema_search_path
           end
         end
 
         # Returns the active schema search path.
         def schema_search_path
-          #@schema_search_path ||= query('SHOW search_path', 'SCHEMA')[0][0]
           @schema_search_path = query('SHOW search_path', 'SCHEMA')[0][0]
         end
       
@@ -331,7 +317,7 @@ module ActiveRecord
         end
       
         def shared_schemas
-          @shared_schemas ||= shared_search_path.split(',')
+          @shared_schemas ||= shared_search_path.split(',').map(&:strip)
         end
       
         def extensions_schema
