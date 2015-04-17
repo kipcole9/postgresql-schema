@@ -273,17 +273,17 @@ module ActiveRecord
         # See: http://www.postgresql.org/docs/current/static/ddl-schemas.html
         #
         # This should be not be called manually but set in database.yml.
-        def schema_search_path=(schema_csv)
-          if schema_csv
-            execute("SET search_path TO #{schema_csv}")
-            schema_search_path
-          end
-        end
-
-        # Returns the active schema search path.
-        def schema_search_path
-          @schema_search_path = query('SHOW search_path', 'SCHEMA')[0][0]
-        end
+        # def schema_search_path=(schema_csv)
+        #   if schema_csv
+        #     execute("SET search_path TO #{schema_csv}")
+        #     schema_search_path
+        #   end
+        # end
+        # 
+        # # Returns the active schema search path.
+        # def schema_search_path
+        #   @schema_search_path = query('SHOW search_path', 'SCHEMA')[0][0]
+        # end
       
         def schema_for_table(table_name)
           schema_list = schema_search_paths.map{|s| '\'' + s.strip + '\''}.join(',')
