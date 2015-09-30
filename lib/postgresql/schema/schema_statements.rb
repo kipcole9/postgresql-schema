@@ -247,6 +247,11 @@ module ActiveRecord
         def enum_type_exists?(enum)
           enum_types.include? enum
         end
+        
+        def enum_values(enum)
+          values = exec_query("select enum_range(NULL::#{enum})").rows.flatten.first
+          values[1..-2].split(',')
+        end
 
         def composite_type_exists?(composite)
           composite_types.include? composite
