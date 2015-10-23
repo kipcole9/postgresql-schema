@@ -249,7 +249,7 @@ module ActiveRecord
         end
         
         def enum_values(enum)
-          values = exec_query("select enum_range(NULL::#{enum})").rows.flatten.first
+          values = exec_query("select enum_range(NULL::#{enum})", "SCHEMA").rows.flatten.first
           values[1..-2].split(',')
         end
 
