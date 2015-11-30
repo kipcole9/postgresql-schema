@@ -161,7 +161,7 @@ HEADER
             stream.puts "  create_composite_type :#{composite_type} do |t|"
           end
           column_specs = @connection.columns(composite_type).map do |column|
-            @connection.column_spec(column, @types)
+            @connection.column_spec(column)
           end.compact
         
           column_specs.each do |s|
@@ -238,7 +238,7 @@ HEADER
           # raise StandardError, "Unknown type '#{column.sql_type}' for column '#{column.name}' with type #{column.type}" if @types[column.type].nil?
           next if column.name == pk
           next if parent_column_names && parent_column_names.include?(column.name)
-          @connection.column_spec(column, @types)
+          @connection.column_spec(column)
         end.compact
 
         # find all migration keys used in this table

@@ -2,7 +2,7 @@ module ActiveRecord
   module ConnectionAdapters # :nodoc:
     class PostgreSQLAdapter 
       def enable_extension(name, options = {})
-        schema = options[:schema] || Rails.configuration.database_configuration[Rails.env]['extensions_schema']
+        schema = options[:schema] || extensions_schema
         exec_query("CREATE EXTENSION IF NOT EXISTS \"#{name}\" #{' SCHEMA ' + schema if schema}").tap {
           reload_type_map
         }
@@ -48,36 +48,38 @@ module ActiveRecord
           # If we specify a schema then we only create it if it doesn't exist
           # and we only force create it if only the specific schema is in the search path
           table_name = "#{schema}.#{table_name}"
-          return if table_exists?(table_name) && !just_this_schema_in_search_path?(schema)
-        else
-          # We only create (or force recreate) tables with no specified schema
-          # if we have schemas that are not in the 'shared_schemas' or there are
-          # no shared schemas in the search path.  That is we assume its a tenanted model
-          # and tables need to go in a tenant schema.
-          return if table_exists?(table_name) && !tenant_schema_in_search_path?(schema)
         end
         
         if parent_table = options.delete(:inherits)
           options[:options] = ["INHERITS (#{parent_table})", options[:options]].compact.join
         end
           
-        td = create_table_definition table_name, options[:temporary], options[:options]
-
-        unless options[:id] == false
-          pk = options.fetch(:primary_key) {
+        td = create_table_definition table_name, options[:temporary], options[:options], options[:as]
+        
+        if options[:id] != false && !options[:as]
+          pk = options.fetch(:primary_key) do
             Base.get_primary_key table_name.to_s.singularize
-          }
+          end
 
-          td.primary_key pk, options.fetch(:id, :primary_key), options
+          if pk.is_a?(Array)
+            td.primary_keys pk
+          else
+            td.primary_key pk, options.fetch(:id, :primary_key), options
+          end
         end
 
         yield td if block_given?
 
-        if options[:force] && table_exists?(table_name)
+        if options[:force] && data_source_exists?(table_name)
           drop_table(table_name, options)
         end
-        
-        execute schema_creation.accept td
+
+        # Rails 5 wont create an empty column list which we might have if we're
+        # working with inherited tables.  So we need to do that manually
+        sql = schema_creation.accept(td)
+        sql = sql.sub("INHERITS", "() INHERITS") if td.columns.empty?
+
+        result = execute sql
         
         if parent_table
           parent_table_primary_key = primary_key(parent_table)
@@ -100,14 +102,6 @@ module ActiveRecord
     private 
       def in_schema_search_path?(schema)
         schema_search_paths.include? schema.to_s
-      end
-      
-      def just_this_schema_in_search_path?(schema)
-        schema_search_paths.length == 1 && schema_search_paths.first == schema
-      end
-      
-      def tenant_schema_in_search_path?(schema)
-        (schema_search_paths - shared_schemas - Array(extensions_schema)).present?
       end
       
       def index_already_exists?(table_name, column_name, options)
@@ -142,7 +136,6 @@ module ActiveRecord
         end
       
         def add_index(table_name, column_name, options = {}) #:nodoc:
-          return if index_already_exists?(table_name, column_name, options) && !just_this_schema_in_search_path?(schema_for_table(table_name))
           index_name, index_type, index_columns, index_options, index_algorithm, index_using = add_index_options(table_name, column_name, options)
           execute "CREATE #{index_type} INDEX #{index_algorithm} #{quote_column_name(index_name)} ON #{quote_table_name(table_name)} #{index_using} (#{index_columns})#{index_options}"
         end
