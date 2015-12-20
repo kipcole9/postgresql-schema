@@ -387,7 +387,7 @@ module ActiveRecord
             LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.cfgnamespace 
             WHERE pg_catalog.pg_ts_config_is_visible(c.oid)
           SQL
-          @@text_search_configurations ||= exec_query(sql, 'SCHEMA').rows.flatten
+          @text_search_configurations ||= exec_query(sql, 'SCHEMA').rows.flatten
         end
         
         def schema_search_paths
