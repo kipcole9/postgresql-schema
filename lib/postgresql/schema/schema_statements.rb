@@ -211,8 +211,8 @@ module ActiveRecord
           execute "DROP DOMAIN IF EXISTS #{name}"
         end
         
-        def drop_trigger(name)
-          execute "DROP TRIGGER #{name}"
+        def drop_trigger(name, options = {})
+          execute "DROP TRIGGER #{name} ON #{options[:on]}"
         end
         
         def drop_function(name, options = {})
