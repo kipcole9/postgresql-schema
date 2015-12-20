@@ -39,6 +39,7 @@ module ActiveRecord
       enums(stream)
       domains(stream)
       composite_types(stream)
+      functions(stream)
       tables(stream)
       trailer(stream)
       stream
@@ -173,6 +174,25 @@ HEADER
         end
       end
     end
+    
+    def functions(stream)
+      funcs = @connection.functions.select {|f| @connection.schema_search_paths.include?(f.values.first[:schema]) }
+      if funcs.any?
+        stream.puts "  # These are user defined functions for this application"
+        funcs.each do |func|
+          func.each do |name, definition|
+            stream.print "  create_function :#{name}, "
+            stream.print "schema: :#{definition[:schema]}, " if definition[:schema]
+            stream.print "returns: :#{definition[:returns]}, "
+            stream.print "language: :#{definition[:language].downcase}, "
+            stream.puts "as: <<-FUNCTION"
+            stream.puts "#{definition[:as]}"
+            stream.puts "  FUNCTION"
+            stream.puts
+          end
+        end
+      end
+    end
 
     def tables(stream)
       @connection.tables.sort.each do |tbl|
@@ -273,6 +293,7 @@ HEADER
         tbl.puts
 
         indexes(table, tbl)
+        triggers(table, tbl)
 
         tbl.rewind
         stream.print tbl.read
@@ -321,6 +342,21 @@ HEADER
         end
           
         stream.puts add_index_statements.sort.join("\n")
+        stream.puts
+      end
+    end
+    
+    def triggers(table, stream)
+      parent_triggers = @connection.triggers_for_table(@connection.parent_table(table))
+      triggers = @connection.triggers_for_table(table).reject{|name, definition| parent_triggers.keys.include?(name)}
+      if triggers.any?
+        triggers.each do |trigger|
+          name = trigger.first
+          definition = trigger.second
+          definition[:execute] = definition[:execute].split('.').last  # Remove the schema name
+          definition = definition.inject([]) {|a, (k, v)| a << "#{k}: #{v.inspect}"}.join(', ')
+          stream.puts "  create_trigger :#{name}, #{definition}"
+        end
         stream.puts
       end
     end

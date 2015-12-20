@@ -87,6 +87,11 @@ module ActiveRecord
           indexes(parent_table).each do |index|
             add_index table_name, index.columns, :unique => index.unique
           end
+          triggers_for_table(parent_table).each do |trigger|
+            name = trigger.first
+            definition = trigger.second.merge(on: table_name)
+            create_trigger name, definition
+          end
         end
 
         td.indexes.each_pair { |c,o| add_index table_name, c, o }
@@ -97,7 +102,7 @@ module ActiveRecord
       def initialize_schema_migrations_table
         # puts "Initializing schema migrations with schema search path as #{ActiveRecord::Base.connection.schema_search_path}"
         ActiveRecord::SchemaMigration.create_table
-      end    
+      end 
       
     private 
       def in_schema_search_path?(schema)
@@ -138,6 +143,24 @@ module ActiveRecord
         def add_index(table_name, column_name, options = {}) #:nodoc:
           index_name, index_type, index_columns, index_options, index_algorithm, index_using = add_index_options(table_name, column_name, options)
           execute "CREATE #{index_type} INDEX #{index_algorithm} #{quote_column_name(index_name)} ON #{quote_table_name(table_name)} #{index_using} (#{index_columns})#{index_options}"
+        end
+        
+        def create_trigger(trigger_name, options)
+          key = options.keys.select{|a| [:before, :after, :instead].include? a}.first
+          operations = options[key].map(&:to_s).join(' OR ')
+          
+          sql =   "CREATE TRIGGER #{trigger_name} #{key} #{operations} "
+          sql <<  "ON #{options[:on].to_s.downcase.pluralize} "
+          sql <<  "FOR EACH #{options[:each] || "ROW"} "
+          sql <<  "EXECUTE PROCEDURE #{options[:execute]}()"
+          execute sql
+        end
+        
+        # create_function :things_search_trigger, returns: :trigger, language: 'plpgsql', as: <<-FUNCTION
+        def create_function(function_name, options)
+          name = [options[:schema], function_name].compact.join('.')
+          sql = "CREATE FUNCTION #{name}() RETURNS #{options[:returns]} LANGUAGE #{options[:language]} AS $$#{options[:as]}$$"
+          execute sql
         end
       
         # Creates a schema for the given schema name.
@@ -186,6 +209,57 @@ module ActiveRecord
         
         def drop_domain(name)
           execute "DROP DOMAIN IF EXISTS #{name}"
+        end
+        
+        def drop_trigger(name)
+          execute "DROP TRIGGER #{name}"
+        end
+        
+        def drop_function(name, options = {})
+          full_name = [options[:schema], name].compact.map(&:to_s).join('.')
+          execute "DROP FUNCTION #{full_name}"
+        end
+        
+        # Format output in a way that can be easily consumed by create_trigger
+        def triggers
+          sql = "select trigger_name, action_timing, action_orientation, event_manipulation, event_object_table, action_statement from information_schema.triggers"
+          rows = exec_query(sql, 'SCHEMA').rows
+          tables = rows.map{|row| Hash[[:trigger_name, :timing, :each, :action, :on, :execute].
+            zip(row)]}.                               # To create a hash of each row
+            group_by{|t| t[:on]}                      # Group by table name
+          
+          tables.each do |table, triggers|            # and then subgroup by trigger_name
+            tables[table] = triggers.group_by{|t| t[:trigger_name]}
+          end    
+
+          tables.each do |table, triggers|            # then collapse trigger definitions that vary only by action_timing
+            triggers.each do |trigger, entries|
+              action = entries.map{|t| t[:action]}.map(&:to_s).map(&:downcase)
+              template = entries.first
+              template[:execute].sub!('EXECUTE PROCEDURE ', '').sub!('()','')
+              template[:each].downcase!
+              template[template[:timing].to_s.downcase.to_sym] = action.uniq
+              template.reject!{|k, v| [:trigger_name, :timing, :action].include? k }
+              tables[table][trigger] = template
+            end
+          end 
+          tables
+        end
+        
+        def triggers_for_table(table)
+          triggers[table.to_s.pluralize] || {}
+        end
+        
+        # Format output in a way that can be easily consumed by create_function
+        def functions
+          sql = <<-END_SQL
+            SELECT routine_schema, routine_name, data_type, external_language, routine_definition 
+            FROM information_schema.routines 
+            WHERE routine_schema <> 'information_schema' AND routine_schema <> '#{extensions_schema}' AND routine_schema <> 'pg_catalog'
+          END_SQL
+          rows = exec_query(sql, 'SCHEMA').rows
+          funcs = rows.map{|row| Hash[[:schema, :name, :returns, :language, :as].zip(row)]}
+          funcs.map!{|f| {f[:name] => (f.reject{|k, v| k == :name})}}
         end
       
         def enum_types
@@ -260,29 +334,6 @@ module ActiveRecord
           res.rows
         end
       
-        # CASCADE added since we may have inherited tables and when :force => true
-        # then they have to go as well.
-        # def drop_table(table_name, options = {})
-        #   execute "DROP TABLE #{quote_table_name(table_name)}"
-        # end
-      
-        # Sets the schema search path to a string of comma-separated schema names.
-        # Names beginning with $ have to be quoted (e.g. $user => '$user').
-        # See: http://www.postgresql.org/docs/current/static/ddl-schemas.html
-        #
-        # This should be not be called manually but set in database.yml.
-        # def schema_search_path=(schema_csv)
-        #   if schema_csv
-        #     execute("SET search_path TO #{schema_csv}")
-        #     schema_search_path
-        #   end
-        # end
-        # 
-        # # Returns the active schema search path.
-        # def schema_search_path
-        #   @schema_search_path = query('SHOW search_path', 'SCHEMA')[0][0]
-        # end
-      
         def schema_for_table(table_name)
           schema_list = schema_search_paths.map{|s| '\'' + s.strip + '\''}.join(',')
           sql = "SELECT schemaname FROM pg_tables where tablename = '#{table_name}' and schemaname in (#{schema_list})"
@@ -329,6 +380,16 @@ module ActiveRecord
           exec_query(composite_query, "SCHEMA").rows.flatten.try(:first)
         end
       
+        def text_search_configurations
+          sql = <<-SQL
+            SELECT c.cfgname as "name"
+            FROM pg_catalog.pg_ts_config c
+            LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.cfgnamespace 
+            WHERE pg_catalog.pg_ts_config_is_visible(c.oid)
+          SQL
+          @@text_search_configurations ||= exec_query(sql, 'SCHEMA').rows.flatten
+        end
+        
         def schema_search_paths
           schema_search_path.split(',').map(&:strip)
         end
