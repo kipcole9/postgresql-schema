@@ -212,7 +212,7 @@ module ActiveRecord
         end
         
         def drop_trigger(name, options = {})
-          execute "DROP TRIGGER #{name} ON #{options[:on]}"
+          execute "DROP TRIGGER #{name} ON #{options[:on].to_s.pluralize}"
         end
         
         def drop_function(name, options = {})
