@@ -196,7 +196,7 @@ HEADER
 
     def tables(stream)
       @connection.tables.sort.each do |tbl|
-        next if ['schema_migrations', ignore_tables].flatten.any? do |ignored|
+        next if ['schema_migrations', 'active_record_internal_metadatas', ignore_tables].flatten.any? do |ignored|
           case ignored
           when String; remove_prefix_and_suffix(tbl) == ignored
           when Regexp; remove_prefix_and_suffix(tbl) =~ ignored
