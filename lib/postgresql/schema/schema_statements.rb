@@ -97,13 +97,6 @@ module ActiveRecord
         td.indexes.each_pair { |c,o| add_index table_name, c, o }
       end
       
-      # Should not be called normally, but this operation is non-destructive.
-      # The migrations module handles this automatically.
-      # def initialize_schema_migrations_table
-      #   # puts "Initializing schema migrations with schema search path as #{ActiveRecord::Base.connection.schema_search_path}"
-      #   ActiveRecord::SchemaMigration.create_table
-      # end
-      
     private 
       def in_schema_search_path?(schema)
         schema_search_paths.include? schema.to_s
